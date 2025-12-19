@@ -4,14 +4,41 @@ from typing import Any, Optional, Union
 import os
 
 
+def configure_deepseek(api_key: Optional[str] = None) -> None:
+    """
+    Configure environment for DeepSeek with Claude Agent SDK.
+
+    DeepSeek provides an Anthropic-compatible endpoint at /anthropic.
+    This function sets up all required environment variables.
+
+    Args:
+        api_key: DeepSeek API key (or uses DEEPSEEK_API_KEY / ANTHROPIC_API_KEY env var)
+    """
+    key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        raise ValueError("DeepSeek API key required. Set DEEPSEEK_API_KEY or pass api_key.")
+
+    os.environ["ANTHROPIC_BASE_URL"] = "https://api.deepseek.com/anthropic"
+    os.environ["ANTHROPIC_AUTH_TOKEN"] = key
+    os.environ["ANTHROPIC_MODEL"] = "deepseek-chat"
+    os.environ["ANTHROPIC_SMALL_FAST_MODEL"] = "deepseek-chat"
+    os.environ["API_TIMEOUT_MS"] = "600000"
+    os.environ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+
+
 class Agent(ABC):
     """
     High-level agent abstraction built on Claude Agents SDK
 
     Supports any model via environment configuration:
     - Claude models (default SDK behavior)
-    - DeepSeek via ANTHROPIC_API_BASE
-    - OpenAI-compatible endpoints
+    - DeepSeek via configure_deepseek() or ANTHROPIC_BASE_URL
+    - Other Anthropic-compatible endpoints
+
+    Example with DeepSeek:
+        from agentkit.core.agent import configure_deepseek
+        configure_deepseek(api_key="sk-xxx")
+        agent = MyAgent(model="deepseek-chat")
     """
 
     def __init__(
@@ -23,30 +50,41 @@ class Agent(ABC):
         tools: Optional[Union[list[str], dict]] = None,
         allowed_tools: Optional[list[str]] = None,
         permission_mode: str = "acceptEdits",
+        use_deepseek: bool = False,
         **kwargs
     ):
         """
         Initialize agent with flexible model configuration
 
         Args:
-            model: Model name (defaults to env AGENTKIT_MODEL or "deepseek-chat")
-            api_base: API base URL (defaults to env ANTHROPIC_API_BASE)
-            api_key: API key (defaults to env ANTHROPIC_API_KEY)
+            model: Model name (defaults to env AGENTKIT_MODEL or ANTHROPIC_MODEL)
+            api_base: API base URL (defaults to env ANTHROPIC_BASE_URL)
+            api_key: API key (defaults to env ANTHROPIC_AUTH_TOKEN)
             system_prompt: Custom system prompt
             tools: Tool configuration - list of tool names or preset dict
                    e.g., {"type": "preset", "preset": "claude_code"}
             allowed_tools: List of allowed tool names (legacy, use tools instead)
             permission_mode: Permission mode (default, acceptEdits, plan, bypassPermissions)
+            use_deepseek: If True, auto-configure for DeepSeek using api_key
             **kwargs: Additional ClaudeAgentOptions
         """
-        # Default model priority: arg > env > deepseek-chat
-        self.model = model or os.getenv("AGENTKIT_MODEL", "deepseek-chat")
+        # Auto-configure DeepSeek if requested
+        if use_deepseek:
+            configure_deepseek(api_key)
 
-        # Setup environment for SDK (it reads these variables)
+        # Default model priority: arg > env AGENTKIT_MODEL > env ANTHROPIC_MODEL > deepseek-chat
+        self.model = (
+            model
+            or os.getenv("AGENTKIT_MODEL")
+            or os.getenv("ANTHROPIC_MODEL")
+            or "deepseek-chat"
+        )
+
+        # Setup environment for SDK (using correct variable names)
         if api_base:
-            os.environ["ANTHROPIC_API_BASE"] = api_base
-        if api_key:
-            os.environ["ANTHROPIC_API_KEY"] = api_key
+            os.environ["ANTHROPIC_BASE_URL"] = api_base
+        if api_key and not use_deepseek:
+            os.environ["ANTHROPIC_AUTH_TOKEN"] = api_key
 
         # Build options based on tools type
         options_kwargs = {

@@ -1,9 +1,30 @@
-"""Stock Research Agent - Deep equity research with fund manager perspective"""
+"""Stock Research Agent - Deep equity research with fund manager perspective
+
+This example uses Claude Agent SDK with DeepSeek model.
+
+Usage:
+    # Set DeepSeek API key in .env or environment
+    export DEEPSEEK_API_KEY=sk-xxx
+
+    # Run research
+    python examples/stock_research_agent.py 601288
+    python examples/stock_research_agent.py 00700 --debug
+"""
 import asyncio
+import os
 import re
+import sys
 from pathlib import Path
 from typing import Any, Optional
-from agentkit.core.agent import Agent
+
+# Load .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+# Add src to path for development
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from agentkit.core.agent import Agent, configure_deepseek
 from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock, ToolResultBlock
 
 
@@ -147,8 +168,7 @@ Use WebSearch to get the latest data. Be thorough and objective."""
 
 
 async def main():
-    """Demo: Research a stock"""
-    import sys
+    """Demo: Research a stock using Claude Agent SDK with DeepSeek"""
 
     # Parse command line args
     if len(sys.argv) < 2:
@@ -163,9 +183,24 @@ async def main():
     options = {"update": "--update" in sys.argv}
     debug = "--debug" in sys.argv
 
+    # Configure DeepSeek for Claude Agent SDK
+    # Support both DEEPSEEK_API_KEY and ANTHROPIC_API_KEY (for compatibility)
+    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        print("Error: DEEPSEEK_API_KEY or ANTHROPIC_API_KEY not set")
+        print("Please set it in .env file or environment")
+        sys.exit(1)
+
+    print(f"Configuring DeepSeek (Anthropic-compatible endpoint)...")
+    configure_deepseek(api_key)
+
     print(f"Starting research for {ticker}...")
 
-    agent = StockResearchAgent(output_dir="./stock-research")
+    # Create agent with DeepSeek model
+    agent = StockResearchAgent(
+        output_dir="./stock-research",
+        model="deepseek-chat"
+    )
 
     try:
         # For debug mode, show raw response
