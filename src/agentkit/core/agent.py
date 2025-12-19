@@ -1,6 +1,6 @@
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, Union
 import os
 
 
@@ -20,7 +20,9 @@ class Agent(ABC):
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         system_prompt: Optional[str] = None,
-        tools: Optional[list[str]] = None,
+        tools: Optional[Union[list[str], dict]] = None,
+        allowed_tools: Optional[list[str]] = None,
+        permission_mode: str = "acceptEdits",
         **kwargs
     ):
         """
@@ -31,7 +33,10 @@ class Agent(ABC):
             api_base: API base URL (defaults to env ANTHROPIC_API_BASE)
             api_key: API key (defaults to env ANTHROPIC_API_KEY)
             system_prompt: Custom system prompt
-            tools: List of allowed tool names
+            tools: Tool configuration - list of tool names or preset dict
+                   e.g., {"type": "preset", "preset": "claude_code"}
+            allowed_tools: List of allowed tool names (legacy, use tools instead)
+            permission_mode: Permission mode (default, acceptEdits, plan, bypassPermissions)
             **kwargs: Additional ClaudeAgentOptions
         """
         # Default model priority: arg > env > deepseek-chat
@@ -43,13 +48,28 @@ class Agent(ABC):
         if api_key:
             os.environ["ANTHROPIC_API_KEY"] = api_key
 
-        self.options = ClaudeAgentOptions(
-            model=self.model,
-            system_prompt=system_prompt,
-            allowed_tools=tools or [],
-            permission_mode="acceptEdits",
+        # Build options based on tools type
+        options_kwargs = {
+            "model": self.model,
+            "system_prompt": system_prompt,
+            "permission_mode": permission_mode,
             **kwargs
-        )
+        }
+
+        # Handle tools parameter
+        if tools is not None:
+            if isinstance(tools, dict):
+                # Preset configuration like {"type": "preset", "preset": "claude_code"}
+                options_kwargs["tools"] = tools
+            else:
+                # List of tool names
+                options_kwargs["allowed_tools"] = tools
+        elif allowed_tools is not None:
+            options_kwargs["allowed_tools"] = allowed_tools
+        else:
+            options_kwargs["allowed_tools"] = []
+
+        self.options = ClaudeAgentOptions(**options_kwargs)
         self.client: Optional[ClaudeSDKClient] = None
         self._conversation_active = False
 
